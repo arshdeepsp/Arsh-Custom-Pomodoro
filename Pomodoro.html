@@ -532,14 +532,25 @@
     .goalbox{flex-direction:column;align-items:center;gap:12px;text-align:center}
     .goal-set{justify-content:center}
 
-    /* full-screen modals are easier to use on a phone */
-    .modal-overlay{padding:0;align-items:stretch}
-    .modal{max-width:none;border-radius:0;min-height:100dvh;max-height:100dvh}
+    /* full-screen modals on a phone: fixed header + footer, body scrolls between them.
+       (a sticky footer over a tall body could hide Save/Cancel and overlap the last row,
+        stealing taps from the time field / dropdown) */
+    .modal-overlay{padding:0;align-items:stretch;overflow:hidden}
+    .modal{max-width:none;border-radius:0;height:100dvh;max-height:100dvh;min-height:0}
+    .modal-head{flex:none}
+    .modal-body{flex:1;min-height:0;overflow:auto;-webkit-overflow-scrolling:touch}
+    .modal-foot{flex:none;background:var(--panel);
+      padding-bottom:calc(18px + env(safe-area-inset-bottom))}
     /* step rows: name on its own line so the controls never overflow */
     .step-row{flex-wrap:wrap}
     .step-row .s-name{flex-basis:100%;order:-1;font-size:15px;padding:6px 4px}
     .step-row .s-del{width:30px;height:30px}
     .step-row .s-move button{width:26px;height:18px;font-size:11px}
+    /* plan block rows: bigger, tappable controls; dropdown gets its own line */
+    .block-row input[type=time]{flex:1 1 auto;font-size:16px;padding:10px}
+    .block-row select{flex:1 1 100%;min-width:0;font-size:16px;padding:11px 10px}
+    .block-row .bdur{min-width:0}
+    .block-row .b-del{width:34px;height:34px;font-size:20px}
   }
 </style>
 <link rel="manifest" href="./manifest.webmanifest">
@@ -1900,26 +1911,35 @@ function closePlanModal(){ document.getElementById('planModal').hidden=true; }
 function renderBlocks(){
   const list=document.getElementById('plan-blocks'); list.innerHTML='';
   document.getElementById('plan-block-count').textContent = editBlocks.length;
-  editBlocks.sort((a,b)=>parseHM(a.time)-parseHM(b.time));
-  const clash=findClash(editBlocks); const cl = clash?[clash[0].id,clash[1].id]:[];
+  editBlocks.sort((a,b)=>parseHM(a.time)-parseHM(b.time));   // sort only when (re)building the list
   editBlocks.forEach(b=>{
     const sel=(b.refType==='preset'?'p:':'s:')+b.refId;
-    const row=document.createElement('div'); row.className='block-row'+(cl.includes(b.id)?' clash':'');
+    const row=document.createElement('div'); row.className='block-row'; row.dataset.bid=b.id;
     row.innerHTML=`
       <input type="time" class="b-time" value="${b.time}">
       <select class="b-ref">${refOptions(sel)}</select>
       <span class="bdur">${blockDurSec(b)?fmtDur(blockDurSec(b)):'—'}</span>
       <button class="b-del" aria-label="Delete block">&times;</button>`;
-    row.querySelector('.b-time').oninput = e=>{ b.time=e.target.value||'00:00'; renderBlocks(); };
+    // update the model in place — do NOT rebuild the list (that would steal focus / reset the picker)
+    row.querySelector('.b-time').onchange = e=>{ b.time=e.target.value||'00:00'; refreshPlanState(); };
     row.querySelector('.b-ref').onchange = e=>{
       const v=e.target.value; if(!v){ b.refType='preset'; b.refId=null; }
       else { const [k,id]=v.split(':'); b.refType=k==='p'?'preset':'sequence'; b.refId=/^\d+$/.test(id)?+id:id; }
-      renderBlocks();
+      row.querySelector('.bdur').textContent = blockDurSec(b)?fmtDur(blockDurSec(b)):'—';
+      refreshPlanState();
     };
     row.querySelector('.b-del').onclick = ()=>{ editBlocks=editBlocks.filter(x=>x.id!==b.id); renderBlocks(); };
     list.appendChild(row);
   });
-  document.getElementById('planMsg').textContent = clash ? `“${blockName(clash[0])}” overlaps “${blockName(clash[1])}” — adjust the times.` : '';
+  refreshPlanState();
+}
+// recompute clash highlighting + message without rebuilding the inputs
+function refreshPlanState(){
+  const clash=findClash(editBlocks); const cl = clash?[clash[0].id,clash[1].id]:[];
+  document.querySelectorAll('#plan-blocks .block-row').forEach(row=>
+    row.classList.toggle('clash', cl.includes(row.dataset.bid)));
+  document.getElementById('planMsg').textContent = clash
+    ? `“${blockName(clash[0])}” overlaps “${blockName(clash[1])}” — adjust the times.` : '';
 }
 document.getElementById('newPlanBtn').onclick = ()=> openPlanModal(null);
 document.getElementById('addBlockBtn').onclick = ()=>{ addBlockDefault(); renderBlocks(); };
