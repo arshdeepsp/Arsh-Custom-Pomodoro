@@ -843,6 +843,7 @@ let achievements = {};           // id -> unlockedAt
 let chosenCat = categories[0].id;
 let dailyGoal = null;            // minutes; immutable once set
 let alarmsOn = true;             // background-alarm preference
+let swReg = null;                // service-worker registration (declared early: tick() reads it)
 let plans = [];                  // saved day-plans (templates / one-offs)
 let activePlanId = null;         // which plan is loaded into the schedule
 let scheduleOn = false;          // is the schedule driving the day?
@@ -1276,7 +1277,8 @@ function tick(){
     renderTimers();
     // app is alive & visible → cancel the imminent backup (in-app handled it) and re-arm the next.
     // when hidden/killed we deliberately leave backups alone so they fire.
-    if(!document.hidden) timers.forEach(t=> t.running ? scheduleNotif(t) : cancelNotif(t));
+    // guarded so a notification hiccup can never halt the tick (and the UI/tab setup after it).
+    try{ if(!document.hidden) timers.forEach(t=> t.running ? scheduleNotif(t) : cancelNotif(t)); }catch(e){}
   }
   if(newEvents) afterEvents();
   if(dirty || newEvents) persist();
@@ -2219,7 +2221,6 @@ document.getElementById('resetStatsBtn').onclick = ()=>{
    Notification Triggers fire on Android even when the app is closed/screen off.
    We schedule them only while the app is in the background (so the in-app laser
    handles foreground), and clear them when you return. */
-let swReg = null;
 if('serviceWorker' in navigator){
   navigator.serviceWorker.register('./sw.js').then(r=>{ swReg = r; updateAlarmBtn(); scheduleAllNotifs(); }).catch(()=>{});
 }
