@@ -414,10 +414,10 @@
 
   /* ---------- mobile (keeps the same look, just fits a phone) ---------- */
   /* mobile tab UI — hidden on desktop, enabled in the mobile media query */
-  .tabbar,.minibar,.sheet-close{display:none}
+  .tabbar,.minibar,.sheet-close,.appbar,.sheet{display:none}
 
   @media (max-width:560px){
-    body{padding:24px 18px 88px}            /* roomier sides/top; bottom clears the tab bar */
+    body{padding:calc(66px + env(safe-area-inset-top)) 18px 92px}   /* clears app bar + tab bar */
     body.minibar-on{padding-bottom:140px}   /* extra room when the running overlay shows */
     .brand p{display:none}                   /* drop the tagline to save vertical space */
 
@@ -455,32 +455,57 @@
       text-overflow:ellipsis;flex:1;min-width:0}
     .minibar .mb-time{font-family:var(--mono);font-size:15px;font-weight:600;flex:none}
     .minibar .mb-more{font-family:var(--mono);font-size:11px;color:var(--ink-faint);flex:none}
-    /* Stats and the New-timer form become full-screen sheets on mobile */
-    #statsPanel:not([hidden]),
-    .builder.open{
-      position:fixed;inset:0;z-index:70;margin:0;border:0;border-radius:0;
-      overflow:auto;padding:18px 16px calc(28px + env(safe-area-inset-bottom));
+    /* New-timer form + Settings become full-screen sheets on mobile */
+    .builder.open,
+    #settingsSheet:not([hidden]){
+      display:block;position:fixed;inset:0;z-index:70;margin:0;border:0;border-radius:0;
+      overflow:auto;padding:calc(18px + env(safe-area-inset-top)) 16px calc(28px + env(safe-area-inset-bottom));
     }
     .sheet-close{
       display:block;width:100%;margin:0 0 16px;padding:12px;
       background:var(--panel);border:1px solid var(--line);border-radius:10px;
       color:var(--ink);font:inherit;font-size:14px;font-weight:600;cursor:pointer;
     }
+    #statsClose{display:none}                 /* Stats is a bottom-nav tab now */
+    .sheet-title{margin:0 0 8px;font-size:18px}
+    .set-row{display:flex;flex-direction:column;gap:12px;padding:18px 0;
+      border-bottom:1px solid var(--line-soft)}
+    .set-row .set-label{font-size:11px;font-weight:700;letter-spacing:.1em;
+      text-transform:uppercase;color:var(--ink-faint)}
+    .set-row .btn{width:100%;justify-content:center;font-size:14px}
+    .set-row .vol{width:100%;display:flex;gap:12px;align-items:center}
+    .set-row .vol input[type=range]{flex:1;width:auto}
 
     .minibar .mb-go{font-size:12px;color:var(--ink-faint);flex:none}
 
-    header{gap:14px;margin-bottom:22px;align-items:center;justify-content:center}
-    .brand{width:100%;text-align:center}
-    .brand h1{font-size:24px;justify-content:center}
-    .brand .logo{width:26px;height:26px}
+    /* the desktop header is replaced by a slim app bar on mobile */
+    header{display:none}
+    .appbar{
+      display:flex;align-items:center;gap:10px;position:fixed;top:0;left:0;right:0;z-index:62;
+      padding:calc(8px + env(safe-area-inset-top)) 14px 8px;
+      background:color-mix(in srgb, var(--bg, #14151b) 86%, transparent);
+      backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);
+      border-bottom:1px solid var(--line);
+    }
+    .appbar .ab-logo{width:24px;height:24px;flex:none}
+    .appbar .ab-logo svg{width:100%;height:100%}
+    .appbar .ab-logo .rim{stroke:var(--ink-faint)}
+    .appbar .ab-logo .hand-h,.appbar .ab-logo .hand-s{stroke:var(--ink)}
+    .appbar .ab-title{font-size:18px;font-weight:700;flex:1;min-width:0;
+      white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+    .appbar .ab-actions{display:flex;gap:8px;flex:none}
+    .appbar .ab-btn{width:40px;height:40px;border-radius:11px;border:1px solid var(--line);
+      background:var(--panel);color:var(--ink);font-size:19px;line-height:1;cursor:pointer;
+      display:flex;align-items:center;justify-content:center}
+    .appbar .ab-add{background:var(--ink);color:var(--bg, #14151b);border-color:var(--ink);font-weight:700}
+    .appbar.no-add .ab-add{display:none}
 
-    .head-actions{gap:8px;width:100%;justify-content:center}
-    .head-actions > .btn{flex:1 1 calc(50% - 4px);font-size:13px;padding:11px 10px}
-    #newBtn{flex-basis:100%}
-    .xpwrap{flex:1 1 100%;justify-content:space-between}
-    .xpwrap .xp-track{flex:1}
-    .vol{flex:1 1 100%;justify-content:space-between}
-    .vol input[type=range]{flex:1;width:auto}
+    /* level / XP bar now lives only on the Running tab */
+    #xpWrap{flex:1 1 100%;justify-content:space-between;margin:0 0 18px;
+      background:var(--panel);border:1px solid var(--line-soft);border-radius:14px;padding:12px 14px}
+    #xpWrap .xp-track{flex:1}
+
+    #newSeqBtn,#newPlanBtn{display:none}      /* adding handled by the + in the app bar */
 
     /* centered, app-like orientation */
     .nownext{justify-content:center;text-align:center;flex-direction:column;gap:6px}
@@ -521,6 +546,22 @@
 </head>
 <body>
 <div class="wrap">
+
+  <!-- mobile-only: slim top app bar (title + settings + context add) -->
+  <div class="appbar" id="appbar">
+    <span class="ab-logo" aria-hidden="true">
+      <svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round">
+        <circle cx="12" cy="12" r="9.2" class="rim"></circle>
+        <line x1="12" y1="12" x2="12" y2="7.2" class="hand-h"></line>
+        <line x1="12" y1="12" x2="12" y2="6" class="hand-s"></line>
+      </svg>
+    </span>
+    <span class="ab-title" id="abTitle">Running</span>
+    <div class="ab-actions">
+      <button class="ab-btn" id="abSettings" aria-label="Settings">⚙</button>
+      <button class="ab-btn ab-add" id="abAdd" aria-label="Add">＋</button>
+    </div>
+  </div>
 
   <header>
     <div class="brand">
@@ -633,6 +674,15 @@
     </div>
   </section>
 
+  <!-- mobile-only: settings sheet (alarms / schedule / sound get moved in here) -->
+  <section class="sheet" id="settingsSheet" hidden>
+    <button class="sheet-close" id="settingsClose" type="button">✕ Close</button>
+    <h3 class="sheet-title">Settings</h3>
+    <div class="set-row" id="setSchedRow"><span class="set-label">Day schedule</span></div>
+    <div class="set-row" id="setAlarmRow"><span class="set-label">Background alarms</span></div>
+    <div class="set-row" id="setVolRow"><span class="set-label">Alarm sound</span></div>
+  </section>
+
   <!-- presets -->
   <div class="sec-head tabsec" data-tab="presets">
     <h2>Presets</h2><span class="count" id="presetCount">0</span>
@@ -680,6 +730,7 @@
   <button class="tab" data-tab="presets"><span class="ti" aria-hidden="true">▦</span><span class="tl">Presets</span></button>
   <button class="tab" data-tab="sequences"><span class="ti" aria-hidden="true">⛓</span><span class="tl">Sequences</span></button>
   <button class="tab" data-tab="plans"><span class="ti" aria-hidden="true">📅</span><span class="tl">Plans</span></button>
+  <button class="tab" data-tab="stats"><span class="ti" aria-hidden="true">📊</span><span class="tl">Stats</span></button>
 </nav>
 
 <!-- sequence editor -->
@@ -2018,20 +2069,31 @@ if(scheduleOn) evalSchedule();
 tick();
 setInterval(tick, 250);          // keeps running (throttled) in background tabs
 
-/* ---------- mobile tabs + running mini-overlay ---------- */
+/* ---------- mobile app bar, tabs, settings + running mini-overlay ---------- */
 const TAB_KEY = 'timerSystem.tab';
-const TAB_NAMES = ['running','presets','sequences','plans'];
+const TAB_NAMES = ['running','presets','sequences','plans','stats'];
+const TAB_TITLES = {running:'Running', presets:'Presets', sequences:'Sequences', plans:'Day plans', stats:'Stats'};
 let currentTab = 'running';
 const tabBar = document.getElementById('tabBar');
 const miniBar = document.getElementById('miniBar');
+const appbar = document.getElementById('appbar');
+const isMobile = window.matchMedia('(max-width:560px)').matches;
 
 function setTab(name){
   if(!TAB_NAMES.includes(name)) name = 'running';
   currentTab = name;
   document.querySelectorAll('.tabsec').forEach(el=>
     el.classList.toggle('tabhide', el.dataset.tab !== name));
+  // Stats is a full section, shown only on its own tab (mobile tab system only)
+  const statsP = document.getElementById('statsPanel');
+  if(isMobile && statsP){
+    if(name === 'stats'){ statsP.hidden = false; renderStats(); }
+    else statsP.hidden = true;
+  }
   if(tabBar) tabBar.querySelectorAll('.tab').forEach(b=>
     b.classList.toggle('active', b.dataset.tab === name));
+  const t = document.getElementById('abTitle'); if(t) t.textContent = TAB_TITLES[name] || '';
+  if(appbar) appbar.classList.toggle('no-add', name === 'stats');   // nothing to add on Stats
   try{ localStorage.setItem(TAB_KEY, name); }catch(e){}
   window.scrollTo(0,0);
   updateMiniBar();
@@ -2052,9 +2114,43 @@ function updateMiniBar(){
     document.body.classList.remove('minibar-on');
   }
 }
+
+// app-bar "+" is context-aware; "⚙" opens the settings sheet
+function abAddAction(){
+  if(currentTab === 'sequences') openSeqModal(null);
+  else if(currentTab === 'plans') openPlanModal(null);
+  else { exitEditMode(); builder.classList.add('open'); fName.focus(); }   // running / presets → new timer
+}
+const abAddBtn = document.getElementById('abAdd');
+if(abAddBtn) abAddBtn.onclick = ()=>{ ensureAudio(); abAddAction(); };
+const settingsSheet = document.getElementById('settingsSheet');
+const abSetBtn = document.getElementById('abSettings');
+if(abSetBtn && settingsSheet) abSetBtn.onclick = ()=>{ settingsSheet.hidden = false; };
+const settingsCloseBtn = document.getElementById('settingsClose');
+if(settingsCloseBtn) settingsCloseBtn.onclick = ()=>{ settingsSheet.hidden = true; };
+
 if(tabBar) tabBar.querySelectorAll('.tab').forEach(b=>
   b.addEventListener('click', ()=> setTab(b.dataset.tab)));
 if(miniBar) miniBar.addEventListener('click', ()=> setTab('running'));
+
+// on mobile, move header controls into their new homes
+if(isMobile){
+  const xp = document.getElementById('xpWrap');
+  const nn = document.getElementById('nowNext');
+  if(xp && nn && nn.parentNode){
+    xp.classList.add('tabsec'); xp.dataset.tab = 'running';
+    xp.title = 'Your level — tap for stats';
+    xp.onclick = ()=> setTab('stats');
+    nn.parentNode.insertBefore(xp, nn);          // level bar → top of Running tab
+  }
+  const pairs = [['setSchedRow','schedBtn'], ['setAlarmRow','alarmBtn']];
+  pairs.forEach(([rowId, btnId])=>{
+    const row = document.getElementById(rowId), btn = document.getElementById(btnId);
+    if(row && btn) row.appendChild(btn);
+  });
+  const volRow = document.getElementById('setVolRow'), volBox = document.querySelector('.vol');
+  if(volRow && volBox) volRow.appendChild(volBox);
+}
 
 // restore the last tab the user was on
 (function(){
@@ -2064,10 +2160,6 @@ if(miniBar) miniBar.addEventListener('click', ()=> setTab('running'));
 })();
 setInterval(updateMiniBar, 250);   // keep the overlay countdown live across tabs
 
-// close the stats sheet on mobile
-const statsCloseBtn = document.getElementById('statsClose');
-if(statsCloseBtn) statsCloseBtn.onclick = ()=> toggleStats(false);
-
 /* stats panel toggle + export / import / reset */
 function toggleStats(force){
   const p = document.getElementById('statsPanel');
@@ -2076,7 +2168,7 @@ function toggleStats(force){
   if(show) renderStats();
 }
 document.getElementById('statsBtn').onclick = ()=> toggleStats();
-document.getElementById('xpWrap').onclick = ()=> toggleStats(true);
+if(!isMobile) document.getElementById('xpWrap').onclick = ()=> toggleStats(true);
 document.getElementById('exportBtn').onclick = ()=>{
   const blob = new Blob([JSON.stringify(serializeState(),null,2)], {type:'application/json'});
   const a = document.createElement('a'); a.href = URL.createObjectURL(blob);

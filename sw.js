@@ -6,7 +6,7 @@
    Alarm scheduling uses Notification Triggers (showTrigger), which the OS fires
    on time even when the browser/app is closed — no SW timers needed. */
 
-const CACHE = 'timers-v2';                 // bump this string whenever you redeploy
+const CACHE = 'timers-v3';                 // bump this string whenever you redeploy
 const SHELL = [
   './Pomodoro.html',
   './manifest.webmanifest',
