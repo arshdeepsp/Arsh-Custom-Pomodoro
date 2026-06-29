@@ -138,7 +138,7 @@
   .seg button[aria-pressed=true]{background:var(--ink);color:#14151b}
 
   .toggle{display:flex;align-items:center;gap:12px;cursor:pointer;user-select:none}
-  .toggle .track{width:44px;height:26px;border-radius:99px;background:var(--panel-2);
+  .toggle .track{width:44px;height:26px;border-radius:99px;background:var(--panel-2);flex:none;
     border:1px solid var(--line);position:relative;transition:background .15s,border-color .15s}
   .toggle .knob{position:absolute;top:2px;left:2px;width:20px;height:20px;border-radius:50%;
     background:var(--ink-dim);transition:transform .15s,background .15s}
@@ -459,7 +459,9 @@
     .builder.open,
     #settingsSheet:not([hidden]){
       display:block;position:fixed;inset:0;z-index:70;margin:0;border:0;border-radius:0;
-      overflow:auto;padding:calc(18px + env(safe-area-inset-top)) 16px calc(28px + env(safe-area-inset-bottom));
+      background:var(--bg, #14151b);min-height:100dvh;
+      overflow:auto;-webkit-overflow-scrolling:touch;
+      padding:calc(18px + env(safe-area-inset-top)) 16px calc(28px + env(safe-area-inset-bottom));
     }
     .sheet-close{
       display:block;width:100%;margin:0 0 16px;padding:12px;
@@ -862,6 +864,7 @@ function serializeState(){
       const remaining = t.running ? Math.max(0,(t.endAt - Date.now())/1000) : t.remaining;
       const o = { id:t.id, name:t.name, color:t.color, total:t.total, cat:t.cat,
                   running:t.running, done:t.done, remaining };
+      if(t.running) o.endAt = t.endAt;     // absolute wall-clock end → survives the app being killed
       if(t.steps){ o.steps=t.steps; o.stepIndex=t.stepIndex; o.seqName=t.seqName; o.seqLoop=t.seqLoop; o.passSkips=t.passSkips||0; }
       else { o.loop = t.loop; }
       if(t.sched){ o.sched=true; o.planBlock=t.planBlock; }
@@ -898,7 +901,9 @@ function loadState(){
     if(!nt.cat) nt.cat = defCat;
     if(nt.steps){ nt.steps.forEach(st=>{ if(st.work===undefined) st.work = true; }); }
     if(nt.steps && nt.passSkips==null) nt.passSkips = 0;
-    if(nt.running) nt.endAt = Date.now() + Math.max(0, nt.remaining)*1000;
+    if(nt.running) nt.endAt = (typeof nt.endAt === 'number')
+      ? nt.endAt                                         // keep real end time → counts time while killed
+      : Date.now() + Math.max(0, nt.remaining)*1000;     // fallback for older saves
     return nt;
   });
   return true;
@@ -1135,7 +1140,7 @@ function startTimer(cfg){
     endAt: Date.now() + cfg.total*1000, done:false
   };
   timers.push(t);
-  armSchedule(t);
+  armSchedule(t); scheduleNotif(t);
   renderTimers(); persist();
 }
 function loadStep(t){
@@ -1154,7 +1159,7 @@ function startSequence(seq){
   loadStep(t);
   t.endAt = Date.now() + t.total*1000;
   timers.push(t);
-  armSchedule(t);
+  armSchedule(t); scheduleNotif(t);
   renderTimers(); persist();
 }
 
@@ -1163,17 +1168,17 @@ function toggleRun(t){
   if(t.running){
     t.remaining = (t.endAt - Date.now())/1000;
     t.running = false;
-    cancelSchedule(t);
+    cancelSchedule(t); cancelNotif(t);
   } else {
     t.done = false;
     t.endAt = Date.now() + t.remaining*1000;
     t.running = true;
-    armSchedule(t);
+    armSchedule(t); scheduleNotif(t);
   }
   renderTimers(); persist();
 }
 function resetTimer(t){
-  cancelSchedule(t);
+  cancelSchedule(t); cancelNotif(t);
   if(t.running){
     const elapsed = Math.max(0, t.total - Math.max(0, t.remaining));
     if(elapsed >= 3){ logEvent({type: t.steps?'sequence':'timer', outcome:'abandoned', name: t.steps?t.seqName:t.name, cat:t.cat, seconds:elapsed}); afterEvents(); }
@@ -1186,7 +1191,7 @@ function resetTimer(t){
 function removeTimer(id){
   const t = timers.find(x=>x.id===id);
   if(t){
-    cancelSchedule(t);
+    cancelSchedule(t); cancelNotif(t);
     if(t.running){
       const elapsed = Math.max(0, t.total - Math.max(0, t.remaining));
       if(elapsed >= 3){ logEvent({type: t.steps?'sequence':'timer', outcome:'abandoned', name: t.steps?t.seqName:t.name, cat:t.cat, seconds:elapsed}); afterEvents(); }
@@ -1215,6 +1220,7 @@ function skipStep(t){
     if(t.running){ t.endAt = Date.now()+t.total*1000; armSchedule(t); }
   }
   afterEvents();
+  if(t.running) scheduleNotif(t); else cancelNotif(t);
   renderTimers(); persist();
 }
 
@@ -1266,7 +1272,12 @@ function tick(){
     updateTimerDom(t);
   });
   const newEvents = events.length > evBefore;
-  if(dirty) renderTimers();
+  if(dirty){
+    renderTimers();
+    // app is alive & visible → cancel the imminent backup (in-app handled it) and re-arm the next.
+    // when hidden/killed we deliberately leave backups alone so they fire.
+    if(!document.hidden) timers.forEach(t=> t.running ? scheduleNotif(t) : cancelNotif(t));
+  }
   if(newEvents) afterEvents();
   if(dirty || newEvents) persist();
   if(scheduleOn) evalSchedule();
@@ -2210,7 +2221,7 @@ document.getElementById('resetStatsBtn').onclick = ()=>{
    handles foreground), and clear them when you return. */
 let swReg = null;
 if('serviceWorker' in navigator){
-  navigator.serviceWorker.register('./sw.js').then(r=>{ swReg = r; updateAlarmBtn(); }).catch(()=>{});
+  navigator.serviceWorker.register('./sw.js').then(r=>{ swReg = r; updateAlarmBtn(); scheduleAllNotifs(); }).catch(()=>{});
 }
 function notifsReady(){
   return !!swReg && ('Notification' in window) && Notification.permission==='granted'
@@ -2236,14 +2247,16 @@ function notifBoundaries(t){
   }
   return out.filter(b=> b.at > Date.now()+800);
 }
+const NOTIF_GRACE_MS = 3000;   // OS backup fires this long after the boundary; a live app cancels it first
 function scheduleNotif(t){
   if(!alarmsOn || !notifsReady()) return;
+  cancelNotif(t);                                   // clear any stale triggers for this timer first
   notifBoundaries(t).forEach((b,i)=>{
     try{
       swReg.showNotification(b.title, {
         tag:`t${t.id}#${i}`, body:b.body, renotify:true, requireInteraction:true,
         icon:'./icon-192.png', badge:'./icon-192.png', vibrate:[250,120,250],
-        showTrigger: new TimestampTrigger(b.at), data:{tid:t.id}
+        showTrigger: new TimestampTrigger(b.at + NOTIF_GRACE_MS), data:{tid:t.id}
       });
     }catch(e){}
   });
@@ -2260,6 +2273,38 @@ function cancelAllNotifs(){
     ns.forEach(n=>{ if(n.tag && n.tag[0]==='t') n.close(); })).catch(()=>{});
 }
 
+/* Ongoing status notification: a single quiet notification that shows the
+   soonest-finishing timer's live countdown. Updates each second while the app
+   is alive (jumps in chunks when backgrounded; freezes if the app is killed,
+   until the scheduled end-alarm fires). Gated by the 🔔 Alarms preference. */
+let _ongoingKey = '';
+function closeOngoingNotif(){
+  if(!swReg) return;
+  swReg.getNotifications().then(ns=> ns.forEach(n=>{ if(n.tag==='ongoing') n.close(); })).catch(()=>{});
+}
+function updateOngoingNotif(){
+  const ok = swReg && ('Notification' in window) && Notification.permission==='granted' && alarmsOn;
+  const running = ok ? timers.filter(t=>t.running && !t.done) : [];
+  if(!running.length){
+    if(_ongoingKey){ _ongoingKey=''; closeOngoingNotif(); }
+    return;
+  }
+  const t = running.reduce((a,b)=> b.remaining < a.remaining ? b : a);
+  const label = t.steps ? (t.seqName + ' · ' + t.name) : t.name;
+  const time  = fmt(Math.max(0, Math.round(t.remaining)));
+  const more  = running.length>1 ? `  ·  +${running.length-1} more` : '';
+  const key = label + '|' + time + '|' + running.length;   // only re-show when the visible second changes
+  if(key === _ongoingKey) return;
+  _ongoingKey = key;
+  try{
+    swReg.showNotification('⏱ ' + time + '  ·  ' + label, {
+      tag:'ongoing', body:'Timer running' + more, silent:true, renotify:false,
+      requireInteraction:false, icon:'./icon-192.png', badge:'./icon-192.png', data:{ongoing:true}
+    });
+  }catch(e){}
+}
+setInterval(updateOngoingNotif, 1000);
+
 // Audio + notifications need a user gesture / permission. Grab both on first input.
 function armAudio(){
   ensureAudio(); armAll();
@@ -2270,12 +2315,13 @@ function armAudio(){
 ['pointerdown','keydown'].forEach(ev=>
   window.addEventListener(ev, armAudio, {once:true, capture:true}));
 
-// Leaving the app → set OS alarms; returning → clear them and resync.
+// Timer OS backups are armed at start and kept current by the tick, so they survive
+// even a foreground kill. Visibility only needs to handle plan pings + audio resync.
 document.addEventListener('visibilitychange', ()=>{
   if(document.hidden){
-    scheduleAllNotifs(); schedulePlanNotifs();
+    schedulePlanNotifs();
   } else {
-    cancelAllNotifs(); cancelPlanNotifs();
+    cancelPlanNotifs();
     if(audioCtx) audioCtx.resume();
     tick(); armAll();
   }
@@ -2305,6 +2351,7 @@ document.getElementById('alarmBtn').onclick = async ()=>{
   if(!alarmsOn){
     alarmsOn = true;
     if(Notification.permission==='default'){ try{ await Notification.requestPermission(); }catch(e){} }
+    scheduleAllNotifs();
   } else {
     alarmsOn = false;
     cancelAllNotifs();
